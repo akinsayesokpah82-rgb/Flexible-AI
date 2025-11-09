@@ -1,7 +1,20 @@
 services:
   - type: web
-    name: flexible-ai
+    name: chatkin-ai-server
     env: node
-    plan: free
-    buildCommand: npm install --prefix server && npm install --prefix client && npm run build --prefix client
-    startCommand: node server/index.js
+    rootDir: server
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+
+  - type: web
+    name: chatkin-ai-client
+    env: node
+    rootDir: client
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm run preview"
+    envVars:
+      - key: NODE_VERSION
+        value: 20
