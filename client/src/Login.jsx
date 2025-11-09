@@ -1,45 +1,77 @@
-import React from "react";
-import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { initializeApp } from "firebase/app";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef } from 'react';
+import ChatMessage from './ChatMessage';
+import Login from "./Login.jsx";
+import { initializeApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
+import firebaseConfig from './firebaseConfig';
+import axios from 'axios';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyC7cAN-mrE2PvmlQ11zLKAdHBhN7nUFjHw",
-  authDomain: "fir-u-c-students-web.firebaseapp.com",
-  databaseURL: "https://fir-u-c-students-web-default-rtdb.firebaseio.com",
-  projectId: "fir-u-c-students-web",
-  storageBucket: "fir-u-c-students-web.firebasestorage.app",
-  messagingSenderId: "113569186739",
-  appId: "1:113569186739:web:d8daf21059f43a79e841c6"
-};
+// Initialize Firebase
+initializeApp(firebaseConfig);
 
-const app = initializeApp(firebaseConfig);
-const provider = new GoogleAuthProvider();
-const auth = getAuth(app);
+export default function App(){
+  const [user, setUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState('');
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
 
-export default function Login() {
-  const navigate = useNavigate();
+  useEffect(()=>{
+    const auth = getAuth();
+    const unsub = onAuthStateChanged(auth, (u)=> setUser(u));
+    return ()=> unsub();
+  },[]);
 
-  const handleGoogleLogin = async () => {
+  useEffect(()=> bottomRef.current?.scrollIntoView({behavior:'smooth'}), [messages]);
+
+  const send = async ()=>{
+    if(!text && !file) return;
+    const userId = user?.uid || 'guest';
+    const userMsg = { role: 'user', content: text || (file && file.name) };
+    setMessages(prev => [...prev, userMsg]);
+    setText('');
+    setFile(null);
+    setLoading(true);
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      console.log("Signed in:", user);
-      navigate("/chat");
-    } catch (error) {
-      console.error(error);
+      if(file){
+        const fd = new FormData();
+        fd.append('file', file);
+        const up = await axios.post('/api/upload', fd);
+        setMessages(prev => [...prev, { role:'assistant', content: `Uploaded: ${up.data.filename}. ${up.data.snippet || ''}` }]);
+      }
+      const res = await axios.post('/api/chat', { userId, message: text || (file && file.name) });
+      setMessages(prev => [...prev, { role:'assistant', content: res.data.reply }]);
+    } catch(err){
+      console.error(err);
+      setMessages(prev => [...prev, { role:'assistant', content: 'Error contacting AI.' }]);
+    } finally {
+      setLoading(false);
     }
   };
 
+  if(!user) return <Login />;
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-      <h1 className="text-3xl font-bold mb-6 text-gray-800">Sign in to Flexible AI</h1>
-      <button
-        onClick={handleGoogleLogin}
-        className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition"
-      >
-        Continue with Google
-      </button>
+    <div className="app">
+      <aside className="sidebar">
+        <h2>FLEXIBLE AI</h2>
+        <div className="creator">Created by Akin Saye Sokpah</div>
+        <div className="contact">Email: sokpahakinsaye81@gmail.com</div>
+        <div className="contact"><a href="https://www.facebook.com/profile.php?id=61583456361691" target="_blank" rel="noreferrer">Facebook</a></div>
+        <button onClick={()=> signOut(getAuth())}>Sign out</button>
+      </aside>
+      <main className="main">
+        <div className="messages">
+          {messages.map((m,i)=> <ChatMessage key={i} role={m.role} content={m.content} />)}
+          <div ref={bottomRef} />
+        </div>
+        <div className="composer">
+          <input value={text} onChange={e=>setText(e.target.value)} placeholder="Ask something..." />
+          <input type="file" onChange={e=>setFile(e.target.files[0])} />
+          <button onClick={send} disabled={loading}>{loading? 'Sending...' : 'Send'}</button>
+        </div>
+      </main>
     </div>
   );
 }
